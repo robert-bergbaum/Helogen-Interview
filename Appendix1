@@ -1,0 +1,84 @@
+#include <Arduino.h>
+#include <DallasTemperature.h>
+#include <OneWire.h>
+
+// ===== Pins =====
+const int TEC_HEAT_PIN = 25;  // Heating control
+const int TEC_COOL_PIN = 26;  // Cooling control
+const int HEATER_PIN = 27;    // Backup heater
+const int TEMP_PIN = 17;      // Temperature sensor data
+
+// ===== Settings =====
+float targetTemp = 20.0;      // Goal temperature
+float currentTemp = 0.0;
+unsigned long lastUpdate = 0;
+
+// ===== PID Control =====
+float Kp = 2.0;  // How aggressively to react
+float Ki = 0.1;  // How to handle small errors over time
+float Kd = 1.0;  // How to prevent overshooting
+
+float error, prevError, integral, derivative;
+
+// ===== Temperature Sensor Setup =====
+OneWire oneWire(TEMP_PIN);
+DallasTemperature sensors(&oneWire);
+
+void setup() {
+  Serial.begin(115200);
+  
+  pinMode(TEC_HEAT_PIN, OUTPUT);
+  pinMode(TEC_COOL_PIN, OUTPUT);
+  pinMode(HEATER_PIN, OUTPUT);
+  
+  sensors.begin();
+  Serial.println("System ready!");
+}
+
+void loop() {
+  // Read temperature every 5 seconds
+  if (millis() - lastUpdate > 5000) {
+    lastUpdate = millis();
+    
+    sensors.requestTemperatures();
+    currentTemp = sensors.getTempCByIndex(0);  // First sensor
+    
+    // Simple sensor check
+    if(currentTemp < -10 || currentTemp > 50) {
+      Serial.println("Sensor error!");
+      return;
+    }
+
+    // Basic PID calculations
+    error = targetTemp - currentTemp;
+    integral += error;
+    derivative = error - prevError;
+    
+    float pidOutput = (Kp * error) + (Ki * integral) + (Kd * derivative);
+    prevError = error;
+
+    // Control TEC
+    if(pidOutput > 0) {
+      // Heat mode
+      digitalWrite(TEC_COOL_PIN, LOW);
+      analogWrite(TEC_HEAT_PIN, pidOutput);
+    } else {
+      // Cool mode
+      digitalWrite(TEC_HEAT_PIN, LOW);
+      analogWrite(TEC_COOL_PIN, abs(pidOutput));
+    }
+
+    // Emergency heater if too cold
+    if(currentTemp < 19.0) {
+      digitalWrite(HEATER_PIN, HIGH);
+    } else {
+      digitalWrite(HEATER_PIN, LOW);
+    }
+
+    // Simple monitoring
+    Serial.print("Temp: ");
+    Serial.print(currentTemp);
+    Serial.print("°C | PID Output: ");
+    Serial.println(pidOutput);
+  }
+}
