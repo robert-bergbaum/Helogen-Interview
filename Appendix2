@@ -1,0 +1,55 @@
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#include <SPI.h>
+#include <SD.h>
+
+#define TEMP_PIN 17         // DS18B20 data pin
+#define SD_CS    5          // SD card chip select pin
+
+OneWire oneWire(TEMP_PIN);
+DallasTemperature sensor(&oneWire);
+File logFile;
+
+unsigned long lastLog = 0;
+const unsigned long logInterval = 60000; // 60 seconds
+
+void setup() {
+  Serial.begin(115200);
+  sensor.begin();
+
+  if (!SD.begin(SD_CS)) {
+    Serial.println("SD init failed!");
+    return;
+  }
+
+  logFile = SD.open("/log.csv", FILE_WRITE);
+  if (logFile) {
+    logFile.println("Time(ms),Temperature(C)");
+    logFile.close();
+  }
+
+  Serial.println("Logger ready.");
+}
+
+void loop() {
+  if (millis() - lastLog >= logInterval) {
+    lastLog = millis();
+    sensor.requestTemperatures();
+    float temp = sensor.getTempCByIndex(0);
+
+    Serial.print("Temp: ");
+    Serial.println(temp);
+
+    logFile = SD.open("/log.csv", FILE_WRITE);
+    if (logFile) {
+      logFile.print(millis());
+      logFile.print(",");
+      logFile.println(temp, 2);
+      logFile.close();
+    }
+  }
+}
+
+
+
+
